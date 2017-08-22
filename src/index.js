@@ -4,6 +4,7 @@ const AWS = require('aws-sdk');
 const http = require('http');
 const zlib = require('zlib');
 const request = require('request');
+const camelCase = require('camelcase');
 
 const addEventsUrl = 'https://www.scalyr.com/addEvents';
 const uploadLogsUrl = 'https://www.scalyr.com/api/uploadLogs';
@@ -15,6 +16,22 @@ const useAddEventsApi = (process.env['USE_ADD_EVENTS_API'] == 'true');
 const encryptedScalyrApiKey = process.env['SCALYR_WRITE_LOGS_KEY'];
 let decryptedScalyrApiKey;
 
+/**
+ * extracts extra server attributes from env vars
+ *
+ * @returns {String}          query param string for upload api
+ */
+function extractServerAttributes() {
+  var uploadLogsQs = '';
+  for(var key in process.env) {
+    if (key.startsWith('SERVER_') && key != 'SERVER_LOG_STREAM'){
+      var serverVar = camelCase(key.substr(7));
+      var serverValue = process.env[key];
+      uploadLogsQs += `&server-${serverVar}=${serverValue}`;
+    }
+  }
+  return uploadLogsQs;
+}
 
 /**
  * Translates a CloudWatch message into a format appropriate for submitting to the Scalyr addEvents API endpoint.
@@ -87,9 +104,10 @@ function transformToPost(cloudWatchMessage) {
     };
   } else {
     const message = transformToUploadLogsMessage(cloudWatchMessage);
+    const serverAttributesQs = extractServerAttributes();
     return {
       headers: {'content-type': 'text/plain'},
-      url: `${uploadLogsUrl}?token=${message.token}&host=${message.host}&logfile=${message.logfile}&server-logStream=${message.logStream}&parser=${parserName}`,
+      url: `${uploadLogsUrl}?token=${message.token}&host=${message.host}&logfile=${message.logfile}&server-logStream=${message.logStream}&parser=${parserName}${serverAttributesQs}`,
       body: message.body
     };
   }
